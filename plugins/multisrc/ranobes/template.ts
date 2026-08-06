@@ -28,12 +28,60 @@ export class RanobesPlugin implements Plugin.PluginBase {
     this.name = metadata.sourceName;
     this.icon = 'multisrc/ranobes/ranobes/icon.png';
     this.site = metadata.sourceSite;
-    this.version = '2.0.2';
+    this.version = '2.0.3';
     this.options = metadata.options as RanobesOptions;
   }
+  private static requestQueue: Promise<void> = Promise.resolve();
+  private static lastRequestTime = 0;
+  private static readonly MIN_DELAY_MS = 1200;
 
-  async safeFecth(url: string, init?: FetchInit): Promise<string> {
+  private async throttle(): Promise<void> {
+    const previous = RanobesPlugin.requestQueue;
+    let release!: (value?: void | PromiseLike<void>) => void;
+    RanobesPlugin.requestQueue = new Promise<void>(res => {
+      release = res;
+    });
+    try {
+      await previous;
+      const now = Date.now();
+      const elapsed = now - RanobesPlugin.lastRequestTime;
+      const remaining = RanobesPlugin.MIN_DELAY_MS - elapsed;
+      if (remaining > 0) {
+        await new Promise(res => setTimeout(res, remaining));
+      }
+      RanobesPlugin.lastRequestTime = Date.now();
+    } finally {
+      release();
+    }
+  }
+
+  async safeFecth(url: string, init?: FetchInit, retries = 3): Promise<string> {
+    await this.throttle();
     const r = await fetchApi(url, init);
+
+    if (r.status === 429) {
+      if (retries <= 0)
+        throw new Error('Rate limited (429), too many retries.');
+
+      const retryAfter = r.headers.get('Retry-After');
+      let waitMs = 3000; // safe default
+      if (retryAfter) {
+        if (/^\d+$/.test(retryAfter.trim())) {
+          // delta-seconds format
+          waitMs = parseInt(retryAfter, 10) * 1000;
+        } else {
+          // HTTP-date format
+          const dateMs = Date.parse(retryAfter);
+          if (!isNaN(dateMs)) {
+            waitMs = Math.max(0, dateMs - Date.now());
+          }
+        }
+      }
+      RanobesPlugin.lastRequestTime = Date.now() + waitMs;
+      await new Promise(res => setTimeout(res, waitMs));
+      return this.safeFecth(url, init, retries - 1);
+    }
+
     if (!r.ok)
       throw new Error(
         'Could not reach site (' + r.status + ') try to open in webview.',
