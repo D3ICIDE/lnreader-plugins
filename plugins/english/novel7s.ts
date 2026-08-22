@@ -74,7 +74,7 @@ class Novel7sPlugin implements Plugin.PluginBase {
   icon = 'src/en/novel7s/icon.png';
   site = 'https://novel7s.com';
   rest = `${this.site}/wp-json/wp/v2`;
-  version = '1.0.0';
+  version = '1.0.1';
 
   filters = {
     sort: {
@@ -235,7 +235,7 @@ class Novel7sPlugin implements Plugin.PluginBase {
       if (!text) continue;
 
       // If it ends like a complete sentence, keep separate
-      if (/[.!?…]["'"']?$/.test(text)) continue;
+      if (/[.!?…]["'”’»]?$/.test(text)) continue;
 
       $(current).append(' ');
       $(current).append($(next).contents());
