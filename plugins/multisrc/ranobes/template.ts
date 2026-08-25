@@ -2,6 +2,7 @@ import { Parser } from 'htmlparser2';
 import { fetchApi, FetchInit } from '@libs/fetch';
 import { Plugin } from '@/types/plugin';
 import { NovelStatus } from '@libs/novelStatus';
+import { storage } from '@libs/storage';
 
 type RanobesOptions = {
   lang?: string;
@@ -22,6 +23,15 @@ export class RanobesPlugin implements Plugin.PluginBase {
   site: string;
   version: string;
   options: RanobesOptions;
+  continuousChapters: boolean;
+
+  pluginSettings = {
+    continuousChapters: {
+      value: '',
+      label: 'Load full chapter list (no paging, slower initial load)',
+      type: 'Switch',
+    },
+  };
 
   private static requestQueues = new Map<string, Promise<void>>();
   private static readonly MIN_DELAY_MS = 1200;
@@ -31,8 +41,9 @@ export class RanobesPlugin implements Plugin.PluginBase {
     this.name = metadata.sourceName;
     this.icon = 'multisrc/ranobes/ranobes/icon.png';
     this.site = metadata.sourceSite;
-    this.version = '2.0.3';
+    this.version = '2.1.0';
     this.options = metadata.options as RanobesOptions;
+    this.continuousChapters = !!storage.get(`${this.id}_continuousChapters`);
   }
 
   private async throttle(): Promise<void> {
@@ -363,6 +374,20 @@ export class RanobesPlugin implements Plugin.PluginBase {
     novel.genres = genreArray.join(', ');
     novel.totalPages = Math.ceil((maxChapters || 1) / 25);
     novel.chapters = chapters;
+
+    if (this.continuousChapters && novel.totalPages > 1) {
+      // Page 1's chapters are already in `chapters` above.
+      // Fetch the remaining pages and append them, then tell the app
+      // there's nothing left to page through.
+      for (let page = 2; page <= novel.totalPages; page++) {
+        const { chapters: morePages } = await this.parsePage(
+          novelPath,
+          String(page),
+        );
+        novel.chapters.push(...morePages);
+      }
+      novel.totalPages = 1;
+    }
 
     if (novel.chapters[0].path) {
       novel.latestChapter = novel.chapters[0];

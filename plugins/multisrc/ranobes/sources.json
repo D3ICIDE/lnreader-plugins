@@ -5,7 +5,8 @@
       "sourceName": "Ranobes",
       "options": {
         "lang": "English",
-        "path": "novels"
+        "path": "novels",
+        "continuousChapters": true
       }
     },
     {
