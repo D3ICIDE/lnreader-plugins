@@ -54,12 +54,13 @@
       "searchKey": "searchkey",
       "postSearch": true,
       "noAjax": true,
+      "preferPageChapterList": true,
       "noPages": ["sort/most-popular"],
       "pageAsPath": true,
-      "chapterListing": "api/chapterlist.php",
       "chapterParam": "aid",
-      "versionIncrements": 2
+      "versionIncrements": 3
     }
+  },
   },
   {
     "id": "anf.net",

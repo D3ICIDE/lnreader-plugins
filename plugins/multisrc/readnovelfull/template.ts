@@ -25,6 +25,7 @@ type ReadNovelFullOptions = {
   noPages?: string[];
   pageAsPath?: boolean;
   customJs?: string;
+  preferPageChapterList?: boolean;
 };
 
 export type ReadNovelFullMetadata = {
@@ -499,7 +500,11 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
     parser.write(body);
     parser.end();
 
-    if (this.options.noAjax && chapters.length > 0 && !totalChapter) {
+    if (
+      this.options.noAjax &&
+      chapters.length > 0 &&
+      (this.options.preferPageChapterList || !totalChapter)
+    ) {
       novel.chapters = chapters;
     } else if (novelId !== null) {
       const chapterListing =
