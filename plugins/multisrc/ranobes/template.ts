@@ -23,17 +23,44 @@ export class RanobesPlugin implements Plugin.PluginBase {
   version: string;
   options: RanobesOptions;
 
+  private static requestQueues = new Map<string, Promise<void>>();
+  private static readonly MIN_DELAY_MS = 1200;
+
   constructor(metadata: RanobesMetadata) {
     this.id = metadata.id;
     this.name = metadata.sourceName;
     this.icon = 'multisrc/ranobes/ranobes/icon.png';
     this.site = metadata.sourceSite;
-    this.version = '2.0.2';
+    this.version = '2.0.3';
     this.options = metadata.options as RanobesOptions;
   }
 
-  async safeFecth(url: string, init?: FetchInit): Promise<string> {
+  private async throttle(): Promise<void> {
+    const key = this.site;
+    const previous = RanobesPlugin.requestQueues.get(key) ?? Promise.resolve();
+    let release: () => void;
+    const next = new Promise<void>(res => (release = res));
+    RanobesPlugin.requestQueues.set(key, next);
+    await previous;
+    await new Promise(res => setTimeout(res, RanobesPlugin.MIN_DELAY_MS));
+    release!();
+  }
+
+  async safeFecth(url: string, init?: FetchInit, retries = 3): Promise<string> {
+    await this.throttle();
     const r = await fetchApi(url, init);
+
+    if (r.status === 429) {
+      if (retries <= 0) {
+        throw new Error('Rate limited (429), too many retries.');
+      }
+      const retryAfter = r.headers.get('Retry-After');
+      const parsedSec = retryAfter ? parseInt(retryAfter, 10) : NaN;
+      const waitMs = !isNaN(parsedSec) ? parsedSec * 1000 : 3000;
+      await new Promise(res => setTimeout(res, waitMs));
+      return this.safeFecth(url, init, retries - 1);
+    }
+
     if (!r.ok)
       throw new Error(
         'Could not reach site (' + r.status + ') try to open in webview.',
