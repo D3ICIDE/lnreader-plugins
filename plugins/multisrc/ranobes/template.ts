@@ -41,17 +41,13 @@ export class RanobesPlugin implements Plugin.PluginBase {
     this.name = metadata.sourceName;
     this.icon = 'multisrc/ranobes/ranobes/icon.png';
     this.site = metadata.sourceSite;
-    this.version = '2.1.2';
+    this.version = '2.0.3';
     this.options = metadata.options as RanobesOptions;
 
-    // Seed the displayed default in the app's settings screen from the
-    // per-source metadata (options.continuousChapters).
     this.pluginSettings.continuousChapters.value =
       !!this.options?.continuousChapters;
   }
 
-  // Read live on every access so a user toggle takes effect immediately,
-  // without needing the app to reconstruct the plugin instance.
   private get continuousChapters(): boolean {
     const stored = storage.get('continuousChapters');
     if (typeof stored === 'boolean') return stored;
@@ -389,18 +385,6 @@ export class RanobesPlugin implements Plugin.PluginBase {
     novel.chapters = chapters;
 
     if (this.continuousChapters && novel.totalPages > 1) {
-      // The inline HTML parse above only gives us page 1's chapters, and we
-      // can't be sure its ordering convention matches the AJAX-driven pages
-      // fetched via parsePage(). To keep ordering consistent across the
-      // whole list, re-fetch ALL pages (including page 1) through
-      // parsePage(), then stitch them together.
-      //
-      // Each individual page's chapters come back oldest -> newest already
-      // (parseChapters() reverses the raw feed). But the PAGES themselves
-      // are newest -> oldest (page 1 = latest chapters, higher page numbers
-      // = older chapters), matching this site's rate-limited pagination.
-      // So we reverse the order of the page chunks (not the chapters within
-      // each chunk) before flattening, to get a fully oldest -> newest list.
       const pageChunks: Plugin.ChapterItem[][] = [];
       for (let page = 1; page <= novel.totalPages; page++) {
         const { chapters: pageChapters } = await this.parsePage(
@@ -409,7 +393,7 @@ export class RanobesPlugin implements Plugin.PluginBase {
         );
         pageChunks.push(pageChapters);
       }
-      novel.chapters = pageChunks.reverse().flat();
+      novel.chapters = pageChunks.flat();
       novel.totalPages = 1;
     }
 
