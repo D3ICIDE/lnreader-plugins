@@ -57,6 +57,7 @@
       "preferPageChapterList": true,
       "noPages": ["sort/most-popular"],
       "pageAsPath": true,
+      "chapterListing": "api/chapterlist.php",
       "chapterParam": "aid",
       "versionIncrements": 3
     }
