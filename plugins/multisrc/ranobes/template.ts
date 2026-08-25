@@ -41,7 +41,7 @@ export class RanobesPlugin implements Plugin.PluginBase {
     this.name = metadata.sourceName;
     this.icon = 'multisrc/ranobes/ranobes/icon.png';
     this.site = metadata.sourceSite;
-    this.version = '2.1.1';
+    this.version = '2.1.2';
     this.options = metadata.options as RanobesOptions;
 
     // Seed the displayed default in the app's settings screen from the
@@ -389,16 +389,27 @@ export class RanobesPlugin implements Plugin.PluginBase {
     novel.chapters = chapters;
 
     if (this.continuousChapters && novel.totalPages > 1) {
-      // Page 1's chapters are already in `chapters` above.
-      // Fetch the remaining pages and append them, then tell the app
-      // there's nothing left to page through.
-      for (let page = 2; page <= novel.totalPages; page++) {
-        const { chapters: morePages } = await this.parsePage(
+      // The inline HTML parse above only gives us page 1's chapters, and we
+      // can't be sure its ordering convention matches the AJAX-driven pages
+      // fetched via parsePage(). To keep ordering consistent across the
+      // whole list, re-fetch ALL pages (including page 1) through
+      // parsePage(), then stitch them together.
+      //
+      // Each individual page's chapters come back oldest -> newest already
+      // (parseChapters() reverses the raw feed). But the PAGES themselves
+      // are newest -> oldest (page 1 = latest chapters, higher page numbers
+      // = older chapters), matching this site's rate-limited pagination.
+      // So we reverse the order of the page chunks (not the chapters within
+      // each chunk) before flattening, to get a fully oldest -> newest list.
+      const pageChunks: Plugin.ChapterItem[][] = [];
+      for (let page = 1; page <= novel.totalPages; page++) {
+        const { chapters: pageChapters } = await this.parsePage(
           novelPath,
           String(page),
         );
-        novel.chapters.push(...morePages);
+        pageChunks.push(pageChapters);
       }
+      novel.chapters = pageChunks.reverse().flat();
       novel.totalPages = 1;
     }
 
