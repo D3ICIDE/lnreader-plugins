@@ -7,6 +7,7 @@ import { storage } from '@libs/storage';
 type RanobesOptions = {
   lang?: string;
   path: string;
+  continuousChapters?: boolean;
 };
 
 export type RanobesMetadata = {
@@ -23,11 +24,10 @@ export class RanobesPlugin implements Plugin.PluginBase {
   site: string;
   version: string;
   options: RanobesOptions;
-  continuousChapters: boolean;
 
   pluginSettings = {
     continuousChapters: {
-      value: '',
+      value: false as boolean,
       label: 'Load full chapter list (no paging, slower initial load)',
       type: 'Switch',
     },
@@ -41,9 +41,22 @@ export class RanobesPlugin implements Plugin.PluginBase {
     this.name = metadata.sourceName;
     this.icon = 'multisrc/ranobes/ranobes/icon.png';
     this.site = metadata.sourceSite;
-    this.version = '2.1.0';
+    this.version = '2.1.1';
     this.options = metadata.options as RanobesOptions;
-    this.continuousChapters = !!storage.get(`${this.id}_continuousChapters`);
+
+    // Seed the displayed default in the app's settings screen from the
+    // per-source metadata (options.continuousChapters).
+    this.pluginSettings.continuousChapters.value =
+      !!this.options?.continuousChapters;
+  }
+
+  // Read live on every access so a user toggle takes effect immediately,
+  // without needing the app to reconstruct the plugin instance.
+  private get continuousChapters(): boolean {
+    const stored = storage.get('continuousChapters');
+    if (typeof stored === 'boolean') return stored;
+    if (typeof stored === 'string') return stored === 'true';
+    return !!this.options?.continuousChapters;
   }
 
   private async throttle(): Promise<void> {
