@@ -508,7 +508,7 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
       chapters.length,
     );
 
-    if (this.options.noAjax && chapters.length > 0) {
+    if (this.options.noAjax && chapters.length > 0 && !totalChapter) {
       console.log(
         '[FWN debug] taking noAjax branch, returning',
         chapters.length,
