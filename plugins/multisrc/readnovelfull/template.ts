@@ -303,7 +303,7 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
           console.log(
             `[chapterListPaginated] page ${page} parsed: ${chapters.length} chapters, totalPage=${json.totalPage}`,
           );
-          await this.sleep(300);
+          await this.sleep(200);
           return { totalPages: json.totalPage || 1, chapters };
         }
 
