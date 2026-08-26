@@ -499,12 +499,22 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
 
     parser.write(body);
     parser.end();
+    console.log(
+      '[FWN debug] novelId:',
+      novelId,
+      '| totalChapter:',
+      totalChapter,
+      '| scraped chapters (page 1):',
+      chapters.length,
+    );
 
-    if (
-      this.options.noAjax &&
-      chapters.length > 0 &&
-      (this.options.preferPageChapterList || !totalChapter)
-    ) {
+    if (this.options.noAjax && chapters.length > 0) {
+      console.log(
+        '[FWN debug] taking noAjax branch, returning',
+        chapters.length,
+        'chapters',
+      );
+      novel.chapters = chapters;
       novel.chapters = chapters;
     } else if (novelId !== null) {
       const chapterListing =
@@ -530,6 +540,12 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
       } else {
         chaptersUrl = `${this.site}${chapterListing}?${params.toString()}`;
       }
+      console.log(
+        '[FWN debug] fetching ajax chapters URL:',
+        chaptersUrl,
+        '| method:',
+        fetchOptions?.method ?? 'GET',
+      );
       const ajaxResult = await fetchApi(chaptersUrl, fetchOptions);
       if (!ajaxResult.ok) {
         console.error(`Failed to fetch chapters: ${ajaxResult.status}`);
@@ -604,9 +620,17 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
         ajaxParser.write(ajaxHtml);
         ajaxParser.end();
         novel.chapters = ajaxChapters;
+        console.log(
+          '[FWN debug] parsed ajax chapters count:',
+          ajaxChapters.length,
+        );
       }
     }
 
+    console.log(
+      '[FWN debug] FINAL chapter count returned:',
+      novel.chapters?.length,
+    );
     return novel as Plugin.SourceNovel;
   }
 
