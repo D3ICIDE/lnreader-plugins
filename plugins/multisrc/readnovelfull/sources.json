@@ -59,7 +59,7 @@
       "pageAsPath": true,
       "chapterListing": "api/chapterlist.php",
       "chapterParam": "aid",
-      "versionIncrements": 14
+      "versionIncrements": 15
     }
   },
   {
