@@ -190,7 +190,7 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
     novelPath: string,
   ): Promise<Plugin.ChapterItem[]> {
     const pageSize = 40;
-    const concurrency = 8; // same pool size you validated in test.py
+    const concurrency = 8;
 
     console.log(
       `[chapterListPaginated] fetching page 1 to determine totalPages`,
@@ -205,14 +205,15 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
       `[chapterListPaginated] totalPages=${first.totalPages}, page 1 returned ${first.chapters.length} chapters`,
     );
 
-    const chaptersByPage = new Map<number, Plugin.ChapterItem[]>();
-    chaptersByPage.set(1, first.chapters);
+    // Plain array, pre-sized, indexed by (page - 1). No Map/iterator involved.
+    const chaptersByPage: (Plugin.ChapterItem[] | undefined)[] = new Array(
+      first.totalPages,
+    );
+    chaptersByPage[0] = first.chapters;
 
     if (first.totalPages > 1) {
-      const remainingPages = Array.from(
-        { length: first.totalPages - 1 },
-        (_, i) => i + 2, // 2..totalPages
-      );
+      const remainingPages: number[] = [];
+      for (let p = 2; p <= first.totalPages; p++) remainingPages.push(p);
 
       console.log(
         `[chapterListPaginated] dispatching ${remainingPages.length} remaining pages with concurrency=${concurrency}`,
@@ -229,7 +230,7 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
             pageSize,
           );
           if (result) {
-            chaptersByPage.set(page, result.chapters);
+            chaptersByPage[page - 1] = result.chapters;
           }
           completedCount++;
           console.log(
@@ -241,12 +242,18 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
       await Promise.all(Array.from({ length: concurrency }, () => worker()));
     }
 
-    const allChapters = [...chaptersByPage.keys()]
-      .sort((a, b) => a - b)
-      .flatMap(page => chaptersByPage.get(page)!);
+    const allChapters: Plugin.ChapterItem[] = [];
+    let fetchedPages = 0;
+    for (let i = 0; i < chaptersByPage.length; i++) {
+      const pageChapters = chaptersByPage[i];
+      if (pageChapters) {
+        fetchedPages++;
+        for (const ch of pageChapters) allChapters.push(ch);
+      }
+    }
 
     console.log(
-      `[chapterListPaginated] finished: ${chaptersByPage.size}/${first.totalPages} pages fetched successfully, ${allChapters.length} total chapters`,
+      `[chapterListPaginated] finished: ${fetchedPages}/${first.totalPages} pages fetched successfully, ${allChapters.length} total chapters`,
     );
 
     return allChapters;
