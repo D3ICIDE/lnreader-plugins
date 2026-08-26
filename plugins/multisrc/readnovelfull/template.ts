@@ -190,7 +190,7 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
     novelPath: string,
   ): Promise<Plugin.ChapterItem[]> {
     const pageSize = 40;
-    const concurrency = 3; // start lower — 8 is clearly too aggressive for this site
+    const concurrency = 1; // start lower — 8 is clearly too aggressive for this site
     const rateLimitState = { backoffUntil: 0 };
 
     console.log(
@@ -303,7 +303,7 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
           console.log(
             `[chapterListPaginated] page ${page} parsed: ${chapters.length} chapters, totalPage=${json.totalPage}`,
           );
-          await this.sleep(600);
+          // await this.sleep(600);
           return { totalPages: json.totalPage || 1, chapters };
         }
 
