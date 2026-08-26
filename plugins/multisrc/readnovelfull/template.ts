@@ -25,7 +25,7 @@ type ReadNovelFullOptions = {
   noPages?: string[];
   pageAsPath?: boolean;
   customJs?: string;
-  preferPageChapterList?: boolean;
+  chapterListPaginated?: boolean;
 };
 
 export type ReadNovelFullMetadata = {
@@ -142,6 +142,76 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
     parser.end();
 
     return novels;
+  }
+
+  // ===========================================================================
+  //                              HELPERS (chapter-list pagination)
+  // ===========================================================================
+
+  parseChapterListFragment(
+    html: string,
+    startIndex: number,
+  ): Plugin.ChapterItem[] {
+    const chapters: Plugin.ChapterItem[] = [];
+    let tempChapter: Partial<Plugin.ChapterItem> = {};
+    let i = startIndex;
+    let inChapter = false;
+
+    const parser = new Parser({
+      onopentag: (name, attribs) => {
+        if (name === 'a' && attribs.href) {
+          i++;
+          inChapter = true;
+          tempChapter.name = attribs.title || `Chapter ${i}`;
+          tempChapter.releaseTime = null;
+          tempChapter.chapterNumber = i;
+          tempChapter.path = attribs.href.startsWith('/')
+            ? attribs.href.substring(1)
+            : attribs.href;
+        }
+      },
+      onclosetag: name => {
+        if (name === 'a' && inChapter) {
+          if (tempChapter.name && tempChapter.path) {
+            chapters.push({ ...tempChapter } as Plugin.ChapterItem);
+          }
+          tempChapter = {};
+          inChapter = false;
+        }
+      },
+    });
+
+    parser.write(html);
+    parser.end();
+    return chapters;
+  }
+
+  async fetchAllChaptersViaJsonAjax(
+    novelPath: string,
+  ): Promise<Plugin.ChapterItem[]> {
+    let allChapters: Plugin.ChapterItem[] = [];
+    let page = 1;
+    let totalPages = 1;
+
+    do {
+      const url = `${this.site}${novelPath}?ajax=chapters&page=${page}&pageSize=40`;
+      const result = await fetchApi(url);
+      if (!result.ok) break;
+
+      const json = await result.json();
+      if (json.totalPage) totalPages = json.totalPage;
+
+      const pageChapters = this.parseChapterListFragment(
+        json.html || '',
+        allChapters.length,
+      );
+      if (pageChapters.length === 0) break;
+
+      allChapters = allChapters.concat(pageChapters);
+      page++;
+    } while (page <= totalPages);
+
+    return allChapters;
   }
 
   async popularNovels(
@@ -499,6 +569,7 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
 
     parser.write(body);
     parser.end();
+
     console.log(
       '[FWN debug] novelId:',
       novelId,
@@ -508,13 +579,14 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
       chapters.length,
     );
 
-    if (this.options.noAjax && chapters.length > 0 && !totalChapter) {
+    if (this.options.chapterListPaginated) {
+      novel.chapters = await this.fetchAllChaptersViaJsonAjax(novelPath);
+    } else if (this.options.noAjax && chapters.length > 0 && !totalChapter) {
       console.log(
         '[FWN debug] taking noAjax branch, returning',
         chapters.length,
         'chapters',
       );
-      novel.chapters = chapters;
       novel.chapters = chapters;
     } else if (novelId !== null) {
       const chapterListing =
@@ -666,7 +738,7 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
       '>': '&gt;',
       '"': '&quot;',
       "'": '&#39;',
-      ' ': '&nbsp;',
+      ' ': '&nbsp;',
       '\u200C': '', // this is probably a breaking change, report if paragraphs look weird
     };
     const escapeHtml = (text: string) =>
