@@ -189,50 +189,70 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
   async fetchAllChaptersViaJsonAjax(
     novelPath: string,
   ): Promise<Plugin.ChapterItem[]> {
-    let allChapters: Plugin.ChapterItem[] = [];
-    let page = 1;
-    let totalPages = 1;
+    const pageSize = 40;
+    const concurrency = 8; // same pool size you validated in test.py
 
-    do {
-      const url = `${this.site}${novelPath}?ajax=chapters&page=${page}&pageSize=40`;
+    const first = await this.fetchChapterPageWithRetry(novelPath, 1, pageSize);
+    if (!first) return [];
 
-      let result: Awaited<ReturnType<typeof fetchApi>> | undefined;
-      let attempt = 0;
-      const maxAttempts = 3;
+    const chaptersByPage = new Map<number, Plugin.ChapterItem[]>();
+    chaptersByPage.set(1, first.chapters);
 
-      while (attempt < maxAttempts) {
-        result = await fetchApi(url);
-        if (result.ok) break;
-        attempt++;
-        console.log(
-          `[chapterListPaginated] page ${page} failed (status ${result.status}), attempt ${attempt}/${maxAttempts}`,
-        );
-        await this.sleep(800 * attempt); // small backoff before retry
-      }
-
-      if (!result || !result.ok) {
-        console.log(
-          `[chapterListPaginated] page ${page} permanently failed after ${maxAttempts} attempts, stopping loop with ${allChapters.length} chapters so far`,
-        );
-        break;
-      }
-
-      const json = await result.json();
-      if (json.totalPage) totalPages = json.totalPage;
-
-      const pageChapters = this.parseChapterListFragment(
-        json.html || '',
-        allChapters.length,
+    if (first.totalPages > 1) {
+      const remainingPages = Array.from(
+        { length: first.totalPages - 1 },
+        (_, i) => i + 2, // 2..totalPages
       );
-      if (pageChapters.length === 0) break;
 
-      allChapters = allChapters.concat(pageChapters);
-      page++;
+      let cursor = 0;
+      const worker = async () => {
+        while (cursor < remainingPages.length) {
+          const page = remainingPages[cursor++];
+          const result = await this.fetchChapterPageWithRetry(
+            novelPath,
+            page,
+            pageSize,
+          );
+          if (result) chaptersByPage.set(page, result.chapters);
+        }
+      };
 
-      await this.sleep(300); // small pacing delay between successful requests, to avoid tripping rate limits
-    } while (page <= totalPages);
+      await Promise.all(Array.from({ length: concurrency }, () => worker()));
+    }
 
-    return allChapters;
+    return [...chaptersByPage.keys()]
+      .sort((a, b) => a - b)
+      .flatMap(page => chaptersByPage.get(page)!);
+  }
+
+  private async fetchChapterPageWithRetry(
+    novelPath: string,
+    page: number,
+    pageSize: number,
+  ): Promise<{ totalPages: number; chapters: Plugin.ChapterItem[] } | null> {
+    const url = `${this.site}${novelPath}?ajax=chapters&page=${page}&pageSize=${pageSize}`;
+    const maxAttempts = 3;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const result = await fetchApi(url);
+      if (result.ok) {
+        const json = await result.json();
+        const chapters = this.parseChapterListFragment(
+          json.html || '',
+          (page - 1) * pageSize, // fixed: page-based, not accumulation-based
+        );
+        return { totalPages: json.totalPage || 1, chapters };
+      }
+      console.log(
+        `[chapterListPaginated] page ${page} failed (status ${result.status}), attempt ${attempt + 1}/${maxAttempts}`,
+      );
+      await this.sleep(800 * (attempt + 1));
+    }
+
+    console.log(
+      `[chapterListPaginated] page ${page} permanently failed after ${maxAttempts} attempts`,
+    );
+    return null;
   }
 
   async popularNovels(
