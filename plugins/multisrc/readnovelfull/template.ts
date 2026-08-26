@@ -192,8 +192,18 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
     const pageSize = 40;
     const concurrency = 8; // same pool size you validated in test.py
 
+    console.log(
+      `[chapterListPaginated] fetching page 1 to determine totalPages`,
+    );
     const first = await this.fetchChapterPageWithRetry(novelPath, 1, pageSize);
-    if (!first) return [];
+    if (!first) {
+      console.log(`[chapterListPaginated] page 1 failed permanently, aborting`);
+      return [];
+    }
+
+    console.log(
+      `[chapterListPaginated] totalPages=${first.totalPages}, page 1 returned ${first.chapters.length} chapters`,
+    );
 
     const chaptersByPage = new Map<number, Plugin.ChapterItem[]>();
     chaptersByPage.set(1, first.chapters);
@@ -204,7 +214,12 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
         (_, i) => i + 2, // 2..totalPages
       );
 
+      console.log(
+        `[chapterListPaginated] dispatching ${remainingPages.length} remaining pages with concurrency=${concurrency}`,
+      );
+
       let cursor = 0;
+      let completedCount = 0;
       const worker = async () => {
         while (cursor < remainingPages.length) {
           const page = remainingPages[cursor++];
@@ -213,16 +228,28 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
             page,
             pageSize,
           );
-          if (result) chaptersByPage.set(page, result.chapters);
+          if (result) {
+            chaptersByPage.set(page, result.chapters);
+          }
+          completedCount++;
+          console.log(
+            `[chapterListPaginated] progress: ${completedCount}/${remainingPages.length} pages completed (page ${page} ${result ? 'ok' : 'failed'})`,
+          );
         }
       };
 
       await Promise.all(Array.from({ length: concurrency }, () => worker()));
     }
 
-    return [...chaptersByPage.keys()]
+    const allChapters = [...chaptersByPage.keys()]
       .sort((a, b) => a - b)
       .flatMap(page => chaptersByPage.get(page)!);
+
+    console.log(
+      `[chapterListPaginated] finished: ${chaptersByPage.size}/${first.totalPages} pages fetched successfully, ${allChapters.length} total chapters`,
+    );
+
+    return allChapters;
   }
 
   private async fetchChapterPageWithRetry(
@@ -234,12 +261,21 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
     const maxAttempts = 3;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      console.log(
+        `[chapterListPaginated] request sent: page=${page} attempt=${attempt + 1}/${maxAttempts} url=${url}`,
+      );
       const result = await fetchApi(url);
+      console.log(
+        `[chapterListPaginated] response received: page=${page} status=${result.status} ok=${result.ok}`,
+      );
       if (result.ok) {
         const json = await result.json();
         const chapters = this.parseChapterListFragment(
           json.html || '',
-          (page - 1) * pageSize, // fixed: page-based, not accumulation-based
+          (page - 1) * pageSize,
+        );
+        console.log(
+          `[chapterListPaginated] page ${page} parsed: ${chapters.length} chapters, totalPage=${json.totalPage}`,
         );
         return { totalPages: json.totalPage || 1, chapters };
       }
