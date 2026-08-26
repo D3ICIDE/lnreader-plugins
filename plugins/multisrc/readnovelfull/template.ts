@@ -190,7 +190,6 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
     novelPath: string,
   ): Promise<Plugin.ChapterItem[]> {
     const pageSize = 40;
-    const concurrency = 1; // start lower — 8 is clearly too aggressive for this site
     const rateLimitState = { backoffUntil: 0 };
 
     console.log(
@@ -211,50 +210,29 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
       `[chapterListPaginated] totalPages=${first.totalPages}, page 1 returned ${first.chapters.length} chapters`,
     );
 
-    const chaptersByPage: (Plugin.ChapterItem[] | undefined)[] = new Array(
-      first.totalPages,
-    );
-    chaptersByPage[0] = first.chapters;
+    const allChapters: Plugin.ChapterItem[] = [...first.chapters];
+    let fetchedPages = 1;
 
     if (first.totalPages > 1) {
-      const remainingPages: number[] = [];
-      for (let p = 2; p <= first.totalPages; p++) remainingPages.push(p);
-
+      const remainingCount = first.totalPages - 1;
       console.log(
-        `[chapterListPaginated] dispatching ${remainingPages.length} remaining pages with concurrency=${concurrency}`,
+        `[chapterListPaginated] fetching ${remainingCount} remaining pages sequentially`,
       );
 
-      let cursor = 0;
-      let completedCount = 0;
-      const worker = async () => {
-        while (cursor < remainingPages.length) {
-          const page = remainingPages[cursor++];
-          const result = await this.fetchChapterPageWithRetry(
-            novelPath,
-            page,
-            pageSize,
-            rateLimitState,
-          );
-          if (result) {
-            chaptersByPage[page - 1] = result.chapters;
-          }
-          completedCount++;
-          console.log(
-            `[chapterListPaginated] progress: ${completedCount}/${remainingPages.length} pages completed (page ${page} ${result ? 'ok' : 'failed'})`,
-          );
+      for (let page = 2; page <= first.totalPages; page++) {
+        const result = await this.fetchChapterPageWithRetry(
+          novelPath,
+          page,
+          pageSize,
+          rateLimitState,
+        );
+        if (result) {
+          allChapters.push(...result.chapters);
+          fetchedPages++;
         }
-      };
-
-      await Promise.all(Array.from({ length: concurrency }, () => worker()));
-    }
-
-    const allChapters: Plugin.ChapterItem[] = [];
-    let fetchedPages = 0;
-    for (let i = 0; i < chaptersByPage.length; i++) {
-      const pageChapters = chaptersByPage[i];
-      if (pageChapters) {
-        fetchedPages++;
-        for (const ch of pageChapters) allChapters.push(ch);
+        console.log(
+          `[chapterListPaginated] progress: ${page - 1}/${remainingCount} pages completed (page ${page} ${result ? 'ok' : 'failed'})`,
+        );
       }
     }
 
@@ -275,12 +253,11 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
     const maxAttempts = 3;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      // Wait out any pool-wide cooldown before sending — this is what
-      // stops every worker from hammering the server during a 429 backoff.
+      // Wait out any rate-limit cooldown before sending.
       const waitMs = rateLimitState.backoffUntil - Date.now();
       if (waitMs > 0) {
         console.log(
-          `[chapterListPaginated] page ${page} waiting ${waitMs}ms for pool-wide rate-limit cooldown`,
+          `[chapterListPaginated] page ${page} waiting ${waitMs}ms for rate-limit cooldown`,
         );
         await this.sleep(waitMs);
       }
@@ -303,7 +280,7 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
           console.log(
             `[chapterListPaginated] page ${page} parsed: ${chapters.length} chapters, totalPage=${json.totalPage}`,
           );
-          await this.sleep(150);
+          await this.sleep(150); // pacing delay — confirmed safe (zero 429s) across multiple runs/novels
           return { totalPages: json.totalPage || 1, chapters };
         }
 
@@ -313,12 +290,12 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
             ? Number(retryAfterHeader) * 1000
             : 3000 * (attempt + 1); // fallback: 3s, 6s, 9s
           const cooldownUntil = Date.now() + retryAfterMs;
-          // Only extend the shared cooldown, never shorten it
+          // Only extend the cooldown, never shorten it
           if (cooldownUntil > rateLimitState.backoffUntil) {
             rateLimitState.backoffUntil = cooldownUntil;
           }
           console.log(
-            `[chapterListPaginated] page ${page} rate-limited (429), pool cooling down for ${retryAfterMs}ms`,
+            `[chapterListPaginated] page ${page} rate-limited (429), cooling down for ${retryAfterMs}ms`,
           );
         } else {
           console.log(
@@ -339,6 +316,7 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
     );
     return null;
   }
+  // ============================================================================================
 
   async popularNovels(
     pageNo: number,
