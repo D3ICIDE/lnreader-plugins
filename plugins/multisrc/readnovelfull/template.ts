@@ -190,7 +190,7 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
     novelPath: string,
   ): Promise<Plugin.ChapterItem[]> {
     const pageSize = 40;
-    const concurrency = 1; // start lower — 8 is clearly too aggressive for this site
+    const concurrency = 2; // start lower — 8 is clearly too aggressive for this site
     const rateLimitState = { backoffUntil: 0 };
 
     console.log(
