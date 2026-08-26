@@ -195,8 +195,27 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
 
     do {
       const url = `${this.site}${novelPath}?ajax=chapters&page=${page}&pageSize=40`;
-      const result = await fetchApi(url);
-      if (!result.ok) break;
+
+      let result: Awaited<ReturnType<typeof fetchApi>> | undefined;
+      let attempt = 0;
+      const maxAttempts = 3;
+
+      while (attempt < maxAttempts) {
+        result = await fetchApi(url);
+        if (result.ok) break;
+        attempt++;
+        console.log(
+          `[chapterListPaginated] page ${page} failed (status ${result.status}), attempt ${attempt}/${maxAttempts}`,
+        );
+        await this.sleep(800 * attempt); // small backoff before retry
+      }
+
+      if (!result || !result.ok) {
+        console.log(
+          `[chapterListPaginated] page ${page} permanently failed after ${maxAttempts} attempts, stopping loop with ${allChapters.length} chapters so far`,
+        );
+        break;
+      }
 
       const json = await result.json();
       if (json.totalPage) totalPages = json.totalPage;
@@ -209,6 +228,8 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
 
       allChapters = allChapters.concat(pageChapters);
       page++;
+
+      await this.sleep(300); // small pacing delay between successful requests, to avoid tripping rate limits
     } while (page <= totalPages);
 
     return allChapters;
