@@ -190,12 +190,18 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
     novelPath: string,
   ): Promise<Plugin.ChapterItem[]> {
     const pageSize = 40;
-    const concurrency = 8;
+    const concurrency = 4; // start lower — 8 is clearly too aggressive for this site
+    const rateLimitState = { backoffUntil: 0 };
 
     console.log(
       `[chapterListPaginated] fetching page 1 to determine totalPages`,
     );
-    const first = await this.fetchChapterPageWithRetry(novelPath, 1, pageSize);
+    const first = await this.fetchChapterPageWithRetry(
+      novelPath,
+      1,
+      pageSize,
+      rateLimitState,
+    );
     if (!first) {
       console.log(`[chapterListPaginated] page 1 failed permanently, aborting`);
       return [];
@@ -205,7 +211,6 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
       `[chapterListPaginated] totalPages=${first.totalPages}, page 1 returned ${first.chapters.length} chapters`,
     );
 
-    // Plain array, pre-sized, indexed by (page - 1). No Map/iterator involved.
     const chaptersByPage: (Plugin.ChapterItem[] | undefined)[] = new Array(
       first.totalPages,
     );
@@ -228,6 +233,7 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
             novelPath,
             page,
             pageSize,
+            rateLimitState,
           );
           if (result) {
             chaptersByPage[page - 1] = result.chapters;
@@ -263,33 +269,68 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
     novelPath: string,
     page: number,
     pageSize: number,
+    rateLimitState: { backoffUntil: number },
   ): Promise<{ totalPages: number; chapters: Plugin.ChapterItem[] } | null> {
     const url = `${this.site}${novelPath}?ajax=chapters&page=${page}&pageSize=${pageSize}`;
     const maxAttempts = 3;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      console.log(
-        `[chapterListPaginated] request sent: page=${page} attempt=${attempt + 1}/${maxAttempts} url=${url}`,
-      );
-      const result = await fetchApi(url);
-      console.log(
-        `[chapterListPaginated] response received: page=${page} status=${result.status} ok=${result.ok}`,
-      );
-      if (result.ok) {
-        const json = await result.json();
-        const chapters = this.parseChapterListFragment(
-          json.html || '',
-          (page - 1) * pageSize,
-        );
+      // Wait out any pool-wide cooldown before sending — this is what
+      // stops every worker from hammering the server during a 429 backoff.
+      const waitMs = rateLimitState.backoffUntil - Date.now();
+      if (waitMs > 0) {
         console.log(
-          `[chapterListPaginated] page ${page} parsed: ${chapters.length} chapters, totalPage=${json.totalPage}`,
+          `[chapterListPaginated] page ${page} waiting ${waitMs}ms for pool-wide rate-limit cooldown`,
         );
-        return { totalPages: json.totalPage || 1, chapters };
+        await this.sleep(waitMs);
       }
-      console.log(
-        `[chapterListPaginated] page ${page} failed (status ${result.status}), attempt ${attempt + 1}/${maxAttempts}`,
-      );
-      await this.sleep(800 * (attempt + 1));
+
+      try {
+        console.log(
+          `[chapterListPaginated] request sent: page=${page} attempt=${attempt + 1}/${maxAttempts} url=${url}`,
+        );
+        const result = await fetchApi(url);
+        console.log(
+          `[chapterListPaginated] response received: page=${page} status=${result.status} ok=${result.ok}`,
+        );
+
+        if (result.ok) {
+          const json = await result.json();
+          const chapters = this.parseChapterListFragment(
+            json.html || '',
+            (page - 1) * pageSize,
+          );
+          console.log(
+            `[chapterListPaginated] page ${page} parsed: ${chapters.length} chapters, totalPage=${json.totalPage}`,
+          );
+          return { totalPages: json.totalPage || 1, chapters };
+        }
+
+        if (result.status === 429) {
+          const retryAfterHeader = result.headers?.get?.('Retry-After');
+          const retryAfterMs = retryAfterHeader
+            ? Number(retryAfterHeader) * 1000
+            : 3000 * (attempt + 1); // fallback: 3s, 6s, 9s
+          const cooldownUntil = Date.now() + retryAfterMs;
+          // Only extend the shared cooldown, never shorten it
+          if (cooldownUntil > rateLimitState.backoffUntil) {
+            rateLimitState.backoffUntil = cooldownUntil;
+          }
+          console.log(
+            `[chapterListPaginated] page ${page} rate-limited (429), pool cooling down for ${retryAfterMs}ms`,
+          );
+        } else {
+          console.log(
+            `[chapterListPaginated] page ${page} failed (status ${result.status}), attempt ${attempt + 1}/${maxAttempts}`,
+          );
+          await this.sleep(800 * (attempt + 1));
+        }
+      } catch (err) {
+        console.log(
+          `[chapterListPaginated] page ${page} threw on attempt ${attempt + 1}/${maxAttempts}: ${err}`,
+        );
+        await this.sleep(800 * (attempt + 1));
+      }
     }
 
     console.log(
