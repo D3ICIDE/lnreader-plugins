@@ -553,11 +553,12 @@
   },
   {
     "id": "WebNovelTraslation",
-    "sourceSite": "https://webnoveltranslations.com/",
+    "sourceSite": "https://wntl.net/",
     "sourceName": "Web Novel Translation",
     "options": {
       "lang": "English",
-      "useNewChapterEndpoint": true
+      "useNewChapterEndpoint": true,
+      "versionIncrements": 1
     }
   },
   {
