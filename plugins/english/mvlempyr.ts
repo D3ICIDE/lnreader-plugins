@@ -30,7 +30,7 @@ class MVLEMPYRPlugin implements Plugin.PluginBase {
   name = 'MVLEMPYR';
   icon = 'src/en/mvlempyr/icon.png';
   site = 'https://www.mvlempyr.io/';
-  version = '1.0.18';
+  version = '1.0.19';
 
   _chapSite = 'https://chap.heliosarchive.online/';
   _allNovels: (Plugin.NovelItem & ExtraNovelData)[] | undefined;
@@ -100,126 +100,79 @@ class MVLEMPYRPlugin implements Plugin.PluginBase {
     );
     return u;
   }
-  _inFlight = new Set<string>();
   async parseNovel(novelPath: string): Promise<Plugin.SourceNovel> {
-    if (this._inFlight.has(novelPath)) {
-      console.log(
-        '[parseNovel] DUPLICATE call while previous still in flight',
-        novelPath,
-        Date.now(),
-      );
-    }
-    this._inFlight.add(novelPath);
-    console.log('[parseNovel] start', novelPath, Date.now());
+    const url = this.site + novelPath;
+    const result = await fetchApi(url, {
+      headers: { 'Cache-Control': 'no-store' },
+    });
 
-    try {
-      const url = this.site + novelPath;
-      console.log('[parseNovel] fetching novel page', url);
-      const result = await fetchApi(url, {
-        headers: { 'Cache-Control': 'no-store' },
-      });
-      console.log('[parseNovel] novel page fetched', Date.now());
-      console.log(
-        '[parseNovel] response headers:',
-        JSON.stringify(Object.fromEntries((result.headers as any).entries())),
-      );
+    const body = await result.text();
 
-      const body = await result.text();
-      console.log('[parseNovel] body length', body.length);
+    const loadedCheerio = parseHTML(body);
+    this.checkCaptcha(loadedCheerio);
 
-      const loadedCheerio = parseHTML(body);
-      this.checkCaptcha(loadedCheerio);
-      console.log('[parseNovel] captcha check passed');
+    const code = loadedCheerio('#novel-code').text();
+    const newNovelId = this.convertNovelId(BigInt(parseInt(code)));
 
-      const code = loadedCheerio('#novel-code').text();
-      console.log('[parseNovel] novel-code text:', JSON.stringify(code));
+    const firstPostsReq = await fetchApi(
+      this._chapSite +
+        'wp-json/wp/v2/posts?tags=' +
+        newNovelId +
+        '&per_page=500&page=1',
+      { headers: { 'Cache-Control': 'no-store' } },
+    );
 
-      const newNovelId = this.convertNovelId(BigInt(parseInt(code)));
-      console.log('[parseNovel] newNovelId', newNovelId);
+    const pages = parseInt(firstPostsReq.headers.get('X-Wp-Totalpages')) || 1;
 
-      console.log('[parseNovel] fetching first posts page');
-      const firstPostsReq = await fetchApi(
-        this._chapSite +
-          'wp-json/wp/v2/posts?tags=' +
-          newNovelId +
-          '&per_page=500&page=1',
-        { headers: { 'Cache-Control': 'no-store' } },
-      );
-      console.log('[parseNovel] first posts page fetched', Date.now());
-
-      const totalPagesHeader = firstPostsReq.headers.get('X-Wp-Totalpages');
-      console.log('[parseNovel] X-Wp-Totalpages header:', totalPagesHeader);
-
-      const pages = parseInt(totalPagesHeader) || 1;
-      console.log('[parseNovel] pages to fetch:', pages);
-
-      const remainingPageNumbers = new Array(pages - 1)
-        .fill(0)
-        .map((_, i) => i + 2);
-      console.log('[parseNovel] remaining page numbers:', remainingPageNumbers);
-
-      const posts = [
-        await firstPostsReq.json(),
-        ...(await Promise.all(
-          remainingPageNumbers.map(page => {
-            console.log('[parseNovel] fetching page', page, Date.now());
-            return fetchApi(
+    const posts = [
+      await firstPostsReq.json(),
+      ...(await Promise.all(
+        new Array(pages - 1)
+          .fill(0)
+          .map((_, i) => i + 2)
+          .map(page =>
+            fetchApi(
               this._chapSite +
                 'wp-json/wp/v2/posts?tags=' +
                 newNovelId +
                 '&per_page=500&page=' +
                 page,
               { headers: { 'Cache-Control': 'no-store' } },
-            ).then(res => {
-              console.log('[parseNovel] page fetched', page, Date.now());
-              return res.json();
-            });
-          }),
-        )),
-      ].flat();
+            ).then(res => res.json()),
+          ),
+      )),
+    ].flat();
 
-      console.log('[parseNovel] all posts collected, count:', posts.length);
-
-      const novel = {
-        path: novelPath,
-        name: loadedCheerio('h1.novel-title').text() || 'Untitled',
-        cover: loadedCheerio('img.novel-image').attr('src'),
-        summary: loadedCheerio('div.synopsis.w-richtext').text().trim(),
-        chapters: posts
-          .map(chap => ({
-            name: chap.acf.ch_name,
-            path:
-              'chapter/' + chap.acf.novel_code + '-' + chap.acf.chapter_number,
-            releaseTime: chap.date,
-            chapterNumber: chap.acf.chapter_number,
-          }))
-          .reverse(),
-        status: loadedCheerio('.novelstatustextlarge').text(),
-        author: loadedCheerio(
-          'div.additionalinfo.tm10 > div.textwrapper:nth-child(1)',
-        )
-          .toArray()
-          .filter(e => {
-            return (
-              e.children.length == 2 &&
-              e.children[0].children[0].data === 'Author:'
-            );
-          })[0].children[1].children[0].data,
-        genres: loadedCheerio('.genre-tags')
-          .map((i, el) => loadedCheerio(el).text())
-          .toArray()
-          .join(','),
-      };
-
-      console.log('[parseNovel] done', novelPath, Date.now());
-      return novel;
-    } catch (e) {
-      console.log('[parseNovel] THREW', novelPath, Date.now(), e);
-      throw e;
-    } finally {
-      this._inFlight.delete(novelPath);
-      console.log('[parseNovel] in-flight cleared', novelPath, Date.now());
-    }
+    return {
+      path: novelPath,
+      name: loadedCheerio('h1.novel-title').text() || 'Untitled',
+      cover: loadedCheerio('img.novel-image').attr('src'),
+      summary: loadedCheerio('div.synopsis.w-richtext').text().trim(),
+      chapters: posts
+        .map(chap => ({
+          name: chap.acf.ch_name,
+          path:
+            'chapter/' + chap.acf.novel_code + '-' + chap.acf.chapter_number,
+          releaseTime: chap.date,
+          chapterNumber: chap.acf.chapter_number,
+        }))
+        .reverse(),
+      status: loadedCheerio('.novelstatustextlarge').text(),
+      author: loadedCheerio(
+        'div.additionalinfo.tm10 > div.textwrapper:nth-child(1)',
+      )
+        .toArray()
+        .filter(e => {
+          return (
+            e.children.length == 2 &&
+            e.children[0].children[0].data === 'Author:'
+          );
+        })[0].children[1].children[0].data,
+      genres: loadedCheerio('.genre-tags')
+        .map((i, el) => loadedCheerio(el).text())
+        .toArray()
+        .join(','),
+    };
   }
 
   async parseChapter(chapterPath: string): Promise<string> {
