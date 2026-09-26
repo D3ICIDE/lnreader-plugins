@@ -35,6 +35,9 @@ class MVLEMPYRPlugin implements Plugin.PluginBase {
   _chapSite = 'https://chap.heliosarchive.online/';
   _allNovels: (Plugin.NovelItem & ExtraNovelData)[] | undefined;
   _allNovelsPromise: Promise<(Plugin.NovelItem & ExtraNovelData)[]> | undefined;
+  private headers = {
+    'Cache-Control': 'no-store',
+  };
 
   checkCaptcha(loadedCheerio: CheerioAPI) {
     const title = loadedCheerio('title').text();
@@ -102,9 +105,7 @@ class MVLEMPYRPlugin implements Plugin.PluginBase {
   }
   async parseNovel(novelPath: string): Promise<Plugin.SourceNovel> {
     const url = this.site + novelPath;
-    const result = await fetchApi(url, {
-      headers: { 'Cache-Control': 'no-store' },
-    });
+    const result = await fetchApi(url, { headers: this.headers });
 
     const body = await result.text();
 
@@ -119,7 +120,7 @@ class MVLEMPYRPlugin implements Plugin.PluginBase {
         'wp-json/wp/v2/posts?tags=' +
         newNovelId +
         '&per_page=500&page=1',
-      { headers: { 'Cache-Control': 'no-store' } },
+      { headers: this.headers },
     );
 
     const pages = parseInt(firstPostsReq.headers.get('X-Wp-Totalpages')) || 1;
@@ -137,7 +138,7 @@ class MVLEMPYRPlugin implements Plugin.PluginBase {
                 newNovelId +
                 '&per_page=500&page=' +
                 page,
-              { headers: { 'Cache-Control': 'no-store' } },
+              { headers: this.headers },
             ).then(res => res.json()),
           ),
       )),
