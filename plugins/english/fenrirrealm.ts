@@ -224,7 +224,7 @@ class FenrirRealmPlugin implements Plugin.PluginBase {
         try {
           // Attempt 1: Handle legacy stringified TipTap JSON AST schema
           const parsedContent: Chapter = JSON.parse(content);
-          if (parsedContent.type === 'doc') {
+          if (Array.isArray(parsedContent.content)) {
             return parsedContent.content
               .map(node => {
                 if (node.type === 'paragraph') {
