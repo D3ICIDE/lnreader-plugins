@@ -100,13 +100,15 @@ class FenrirRealmPlugin implements Plugin.PluginBase {
     const params = new URLSearchParams({
       page: pageNo.toString(),
       per_page: '20',
-      status: filters.status.value,
-      order: showLatestNovels ? 'latest' : filters.sort.value,
+      sort: showLatestNovels ? 'latest' : filters.sort.value,
     });
+    if (filters.status.value) {
+      params.append('statuses[]', filters.status.value);
+    }
     filters.genres.value.forEach(g => params.append('genres[]', g));
 
     const res = await fetchApi(
-      `${this.site}/api/series/filter?${params.toString()}`,
+      `${this.site}/api/new/v2/series?${params.toString()}`,
     ).then(r =>
       r.json().catch(() => {
         throw new Error(
@@ -422,14 +424,14 @@ class FenrirRealmPlugin implements Plugin.PluginBase {
     status: {
       type: FilterTypes.Picker,
       label: 'Status',
-      value: 'any',
+      value: '',
       options: [
-        { label: 'All', value: 'any' },
-        { label: 'Ongoing', value: 'ongoing' },
-        {
-          label: 'Completed',
-          value: 'completed',
-        },
+        { label: 'All', value: '' },
+        { label: 'Ongoing', value: 'on-going' },
+        { label: 'Completed', value: 'completed' },
+        { label: 'Hiatus', value: 'hiatus' },
+        { label: 'On Hold', value: 'on-hold' },
+        { label: 'Dropped', value: 'dropped' },
       ],
     },
     sort: {
