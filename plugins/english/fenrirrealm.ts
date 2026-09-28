@@ -75,7 +75,7 @@ class FenrirRealmPlugin implements Plugin.PluginBase {
   name = 'Fenrir Realm';
   icon = 'src/en/fenrirrealm/icon.png';
   site = 'https://fenrirealm.com';
-  version = '1.1.2';
+  version = '1.1.3';
   imageRequestInit?: Plugin.ImageRequestInit | undefined = undefined;
 
   hideLocked = storage.get('hideLocked');
@@ -224,7 +224,10 @@ class FenrirRealmPlugin implements Plugin.PluginBase {
         try {
           // Attempt 1: Handle legacy stringified TipTap JSON AST schema
           const parsedContent: Chapter = JSON.parse(content);
-          if (Array.isArray(parsedContent.content)) {
+          if (
+            parsedContent.type === 'doc' ||
+            parsedContent.type === 'systemWindow'
+          ) {
             return parsedContent.content
               .map(node => {
                 if (node.type === 'paragraph') {
