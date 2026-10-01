@@ -72,12 +72,12 @@
   },
   {
     "id": "novelbin",
-    "sourceSite": "https://novelbin.com/",
+    "sourceSite": "https://novelping.com/",
     "sourceName": "Novel Bin",
     "options": {
-      "latestPage": "sort/latest",
+      "latestPage": "sort/updates",
       "searchPage": "search",
-      "versionIncrements": 1,
+      "versionIncrements": 2,
       "customJs": "$('[class*=\"app-promo\"]').remove();"
     }
   },
