@@ -67,9 +67,8 @@
     "options": {
       "latestPage": "latest-release-novel",
       "searchPage": "search",
-      "imageReferer": true,
       "chapterListing": "ajax-chapter-option",
-      "versionIncrements": 4,
+      "versionIncrements": 1,
       "listClass": "fwn-archive-main"
     }
   },
