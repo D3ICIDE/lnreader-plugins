@@ -27,6 +27,7 @@ type ReadNovelFullOptions = {
   customJs?: string;
   chapterListPaginated?: boolean;
   imageReferer?: boolean;
+  listClass?: string;
 };
 
 export type ReadNovelFullMetadata = {
@@ -46,8 +47,6 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
   options: ReadNovelFullOptions;
   filters?: Filters | undefined;
   imageRequestInit?: Plugin.ImageRequestInit;
-  debugCalls = 0;
-  private seenPaths = new Set<string>();
 
   constructor(metadata: ReadNovelFullMetadata) {
     this.id = metadata.id;
@@ -79,6 +78,13 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
     let tempNovel: Partial<Plugin.NovelItem> = {};
     let depth: number;
 
+    const { listClass } = this.options;
+    const isListStart = (cls?: string) => {
+      if (!cls) return false;
+      if (listClass) return cls.split(/\s+/).includes(listClass);
+      return cls.includes('archive') || cls === 'col-content'; // legacy behaviour
+    };
+
     const stateStack: ParsingState[] = [ParsingState.Idle];
     const currentState = () => stateStack[stateStack.length - 1];
     const pushState = (state: ParsingState) => stateStack.push(state);
@@ -89,8 +95,8 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
       onopentag: (name, attribs) => {
         const state = currentState();
         if (
-          attribs.class?.includes('archive') ||
-          attribs.class === 'col-content'
+          isListStart(attribs.class) &&
+          (!listClass || state === ParsingState.Idle)
         ) {
           pushState(ParsingState.NovelList);
           depth = 0;
@@ -367,20 +373,8 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
         `Could not reach site (${result.status}: ${result.statusText}) try to open in webview.`,
       );
     }
-    //replace
     const html = await result.text();
-    if (pageNo === 1) this.seenPaths.clear();
-    const novels = this.parseNovels(html);
-    const unique = new Set(novels.map(n => n.path)).size;
-    const seenBefore = novels.filter(n => this.seenPaths.has(n.path)).length;
-    novels.forEach(n => this.seenPaths.add(n.path));
-    this.debugCalls++;
-    novels.push({
-      name: `DEBUG p${pageNo} n=${novels.length} uniq=${unique} seen=${seenBefore}`,
-      path: `debug-${pageNo}-${this.debugCalls}`,
-      cover: '',
-    });
-    return novels;
+    return this.parseNovels(html);
   }
 
   async parseNovel(novelPath: string): Promise<Plugin.SourceNovel> {

@@ -69,7 +69,8 @@
       "searchPage": "search",
       "imageReferer": true,
       "chapterListing": "ajax-chapter-option",
-      "versionIncrements": 3
+      "versionIncrements": 4,
+      "listClass": "fwn-archive-main"
     }
   },
   {
