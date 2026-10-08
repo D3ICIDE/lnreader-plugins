@@ -47,6 +47,7 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
   filters?: Filters | undefined;
   imageRequestInit?: Plugin.ImageRequestInit;
   debugCalls = 0;
+  private seenPaths = new Set<string>();
 
   constructor(metadata: ReadNovelFullMetadata) {
     this.id = metadata.id;
@@ -366,11 +367,16 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
         `Could not reach site (${result.status}: ${result.statusText}) try to open in webview.`,
       );
     }
+    //replace
     const html = await result.text();
+    if (pageNo === 1) this.seenPaths.clear();
     const novels = this.parseNovels(html);
-    this.debugCalls = (this.debugCalls || 0) + 1;
+    const unique = new Set(novels.map(n => n.path)).size;
+    const seenBefore = novels.filter(n => this.seenPaths.has(n.path)).length;
+    novels.forEach(n => this.seenPaths.add(n.path));
+    this.debugCalls++;
     novels.push({
-      name: `DEBUG page ${pageNo} call #${this.debugCalls}`,
+      name: `DEBUG p${pageNo} n=${novels.length} uniq=${unique} seen=${seenBefore}`,
       path: `debug-${pageNo}-${this.debugCalls}`,
       cover: '',
     });
