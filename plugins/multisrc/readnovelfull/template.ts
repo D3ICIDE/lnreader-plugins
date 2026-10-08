@@ -46,6 +46,7 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
   options: ReadNovelFullOptions;
   filters?: Filters | undefined;
   imageRequestInit?: Plugin.ImageRequestInit;
+  debugCalls = 0;
 
   constructor(metadata: ReadNovelFullMetadata) {
     this.id = metadata.id;
@@ -366,7 +367,14 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
       );
     }
     const html = await result.text();
-    return this.parseNovels(html);
+    const novels = this.parseNovels(html);
+    this.debugCalls = (this.debugCalls || 0) + 1;
+    novels.push({
+      name: `DEBUG page ${pageNo} call #${this.debugCalls}`,
+      path: `debug-${pageNo}-${this.debugCalls}`,
+      cover: '',
+    });
+    return novels;
   }
 
   async parseNovel(novelPath: string): Promise<Plugin.SourceNovel> {
