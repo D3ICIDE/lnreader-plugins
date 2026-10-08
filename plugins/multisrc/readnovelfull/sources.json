@@ -69,7 +69,7 @@
       "searchPage": "search",
       "imageReferer": true,
       "chapterListing": "ajax-chapter-option",
-      "versionIncrements": 2
+      "versionIncrements": 3
     }
   },
   {
