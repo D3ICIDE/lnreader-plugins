@@ -378,7 +378,7 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
     const novels = this.parseNovels(html);
     const paths = novels.map(n => n.path);
 
-    // Next page identical to the previous one: the site is repeating the last page. Stop.
+    // If the previous and current page share the same novel items then return []
     const prev = this.lastPage;
     if (
       prev &&
