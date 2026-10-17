@@ -375,24 +375,22 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
       );
     }
     const html = await result.text();
+    const html = await result.text();
     const novels = this.parseNovels(html);
-
-    if (pageNo === 1) this.pagePaths.clear();
-
     const paths = novels.map(n => n.path);
 
-    // Same list as an earlier page? The site is repeating the last page (or redirecting): stop.
-    for (const [no, prev] of this.pagePaths) {
-      if (
-        no < pageNo &&
-        prev.length === paths.length &&
-        prev.every((p, i) => p === paths[i])
-      ) {
-        return [];
-      }
+    // Next page identical to the previous one: the site is repeating the last page. Stop.
+    const prev = this.lastPage;
+    if (
+      prev &&
+      pageNo === prev.no + 1 &&
+      prev.paths.length === paths.length &&
+      prev.paths.every((p, i) => p === paths[i])
+    ) {
+      return [];
     }
 
-    this.pagePaths.set(pageNo, paths);
+    this.lastPage = { no: pageNo, paths };
     return novels;
   }
 
