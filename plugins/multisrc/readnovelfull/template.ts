@@ -47,6 +47,7 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
   options: ReadNovelFullOptions;
   filters?: Filters | undefined;
   imageRequestInit?: Plugin.ImageRequestInit;
+  private lastPage: { no: number; paths: string[] } | null = null;
 
   constructor(metadata: ReadNovelFullMetadata) {
     this.id = metadata.id;
@@ -374,7 +375,25 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
       );
     }
     const html = await result.text();
-    return this.parseNovels(html);
+    const novels = this.parseNovels(html);
+
+    if (pageNo === 1) this.pagePaths.clear();
+
+    const paths = novels.map(n => n.path);
+
+    // Same list as an earlier page? The site is repeating the last page (or redirecting): stop.
+    for (const [no, prev] of this.pagePaths) {
+      if (
+        no < pageNo &&
+        prev.length === paths.length &&
+        prev.every((p, i) => p === paths[i])
+      ) {
+        return [];
+      }
+    }
+
+    this.pagePaths.set(pageNo, paths);
+    return novels;
   }
 
   async parseNovel(novelPath: string): Promise<Plugin.SourceNovel> {
