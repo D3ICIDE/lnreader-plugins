@@ -375,7 +375,6 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
       );
     }
     const html = await result.text();
-    const html = await result.text();
     const novels = this.parseNovels(html);
     const paths = novels.map(n => n.path);
 
