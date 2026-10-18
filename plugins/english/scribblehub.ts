@@ -78,7 +78,16 @@ class ScribbleHubPlugin implements Plugin.PluginBase {
       url += `series-finder/?sf=1&sort=ratings&order=desc&pg=${page}`;
     }
 
-    const body = await fetchApi(url).then(result => result.text());
+    // const body = await fetchApi(url).then(result => result.text());
+    const res = await fetchApi(url);
+    const body = await res.text();
+    console.log(
+      'SH status',
+      res.status,
+      body.length,
+      body.includes('search_main_box'),
+      body.slice(0, 200),
+    );
 
     const loadedCheerio = parseHTML(body);
     return this.parseNovels(loadedCheerio);
