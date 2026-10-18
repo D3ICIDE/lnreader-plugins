@@ -382,7 +382,7 @@ export class ReadNovelFullPlugin implements Plugin.PluginBase {
     const prev = this.lastPage;
     if (
       prev &&
-      pageNo === prev.no + 1 &&
+      pageNo > prev.no &&
       prev.paths.length === paths.length &&
       prev.paths.every((p, i) => p === paths[i])
     ) {
