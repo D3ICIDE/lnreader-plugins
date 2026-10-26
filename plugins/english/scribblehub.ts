@@ -9,7 +9,7 @@ class ScribbleHubPlugin implements Plugin.PluginBase {
   name = 'Scribble Hub';
   icon = 'src/en/scribblehub/icon.png';
   site = 'https://www.scribblehub.com/';
-  version = '1.0.2';
+  version = '1.0.3';
 
   parseNovels(loadedCheerio: CheerioAPI) {
     const novels: Plugin.NovelItem[] = [];
@@ -78,10 +78,24 @@ class ScribbleHubPlugin implements Plugin.PluginBase {
       url += `series-finder/?sf=1&sort=ratings&order=desc&pg=${page}`;
     }
 
-    const body = await fetchApi(url).then(result => result.text());
+    // const body = await fetchApi(url).then(result => result.text());
+    //
+    // const loadedCheerio = parseHTML(body);
+    // return this.parseNovels(loadedCheerio);
+    console.log('[SH] requesting:', url);
+
+    const result = await fetchApi(url);
+    const body = await result.text();
+
+    console.log('[SH] status:', result.status);
+    console.log('[SH] bytes:', body.length);
+    console.log('[SH] title:', body.match(/<title>([^<]*)<\/title>/i)?.[1]);
+    console.log('[SH] has novel cards:', body.includes('search_main_box'));
 
     const loadedCheerio = parseHTML(body);
-    return this.parseNovels(loadedCheerio);
+    const novels = this.parseNovels(loadedCheerio);
+    console.log('[SH] parsed novels:', novels.length);
+    return novels;
   }
 
   async parseNovel(novelPath: string): Promise<Plugin.SourceNovel> {
